@@ -178,9 +178,9 @@ Each adapter factory's constructor row in §8 of the ledger reads **live-verifie
 Everything still gated raises `NotImplementedError("blocked on verification: …")`
 rather than guessing at an unverified endpoint, header, or class name — that
 currently includes Exchange publication. MCP tool discovery and every
-framework's MCP binding are verified through the governed gateway; their
-governance types live in `donkey_kit.experimental`, outside the stable namespace. The SDK
-does not ship a provisioning control plane (ADR 0008 in `docs/adr/`). The adapters build their framework's native object directly; they
+framework's MCP binding are verified through the governed gateway, and their
+types (`ToolSet`, `GovernanceCriteria`, `UngovernedMcpServer`, …) are exported
+from `donkey_kit`. The SDK does not ship a provisioning control plane (ADR 0008 in `docs/adr/`). The adapters build their framework's native object directly; they
 refuse only when the installed framework version lacks the class or field the
 adapter depends on.
 
