@@ -42,8 +42,8 @@ from donkey_kit.core.identity import (
 from donkey_kit.core.transport.headers import PROXY_API_KEY_SENTINEL
 
 _PROXY = "https://gw.example.internal/openai-sdk/"
-_ALICE = "id-token-alice"
-_BOB = "id-token-bob"
+_ALICE = "token-alice"
+_BOB = "token-bob"
 _SENTINEL = f"Bearer {PROXY_API_KEY_SENTINEL}"
 
 
@@ -113,7 +113,7 @@ def _requested_sync(tool: Any, *args: Any) -> Approval:
 async def test_capture_records_the_user_and_attribution_bound_now() -> None:
     assert capture_requester() == Requester(None, None, None)
     async with Donkey(_cfg()) as donkey:
-        async with donkey.as_user(id_token=_ALICE):
+        async with donkey.as_user(token=_ALICE):
             with donkey.attribution(team="payments", business_group="risk-eu"):
                 requester = capture_requester()
     assert requester.user is not None and requester.user.token == _ALICE
@@ -125,7 +125,7 @@ async def test_capture_records_the_user_and_attribution_bound_now() -> None:
 
 async def test_the_scope_binds_exactly_the_requester_and_restores_on_exit() -> None:
     async with Donkey(_cfg()) as donkey:
-        async with donkey.as_user(id_token=_ALICE):
+        async with donkey.as_user(token=_ALICE):
             with donkey.attribution(team="payments", business_group="risk-eu"):
                 alice = capture_requester()
         with donkey.attribution(team="ops", project="p1", business_group="risk-us"):
@@ -140,21 +140,21 @@ async def test_the_scope_binds_exactly_the_requester_and_restores_on_exit() -> N
 
 async def test_no_requester_binds_nothing() -> None:
     async with Donkey(_cfg()) as donkey:
-        async with donkey.as_user(id_token=_BOB):
+        async with donkey.as_user(token=_BOB):
             with requester_scope(None, what="a call"):
                 assert _who() == (_BOB, None, None)
 
 
 async def test_the_check_compares_tokens_not_scopes() -> None:
     async with Donkey(_cfg()) as donkey:
-        async with donkey.as_user(id_token=_ALICE):
+        async with donkey.as_user(token=_ALICE):
             alice = capture_requester()
         # Unbound passes: the scope re-binds the requester.
         check_requester(alice, what="a call")
         # Another block with the same token is the same user.
-        async with donkey.as_user(id_token=_ALICE):
+        async with donkey.as_user(token=_ALICE):
             check_requester(alice, what="a call")
-        async with donkey.as_user(id_token=_BOB):
+        async with donkey.as_user(token=_BOB):
             with pytest.raises(AuthError) as other:
                 check_requester(alice, what="approval 1f for tool 'issue_refund'")
             with pytest.raises(AuthError) as service:
@@ -179,7 +179,7 @@ async def test_resolve_sends_the_tools_model_calls_as_the_requester() -> None:
             await _model_call(donkey)
             return "summarised"
 
-        async with donkey.as_user(id_token=_ALICE):
+        async with donkey.as_user(token=_ALICE):
             approval = await _requested(summarise("T-1"))
         # The decision arrives in the approver's handler, outside as_user().
         resumed = donkey.approvals.resolve(approval.id, approved_by="m.keller")
@@ -195,7 +195,7 @@ async def test_resolve_runs_the_tool_with_the_requesters_attribution() -> None:
     seen: Seen = []
     issue_refund = _refund_tool(seen)
     async with Donkey(_cfg()) as donkey:
-        async with donkey.as_user(id_token=_ALICE):
+        async with donkey.as_user(token=_ALICE):
             with donkey.run(team="payments", business_group="risk-eu"):
                 approval = _requested_sync(issue_refund, "T-1")
         with donkey.attribution(team="ops", business_group="risk-us"):
@@ -218,9 +218,9 @@ async def test_resolve_under_another_user_is_refused_and_stays_pending() -> None
     seen: Seen = []
     issue_refund = _refund_tool(seen)
     async with Donkey(_cfg()) as donkey:
-        async with donkey.as_user(id_token=_ALICE):
+        async with donkey.as_user(token=_ALICE):
             approval = _requested_sync(issue_refund, "T-1")
-        async with donkey.as_user(id_token=_BOB):
+        async with donkey.as_user(token=_BOB):
             with pytest.raises(AuthError) as refused:
                 donkey.approvals.resolve(approval.id, approved_by="m.keller")
         assert seen == []
@@ -235,9 +235,9 @@ async def test_resolve_under_the_requesters_own_token_runs() -> None:
     seen: Seen = []
     issue_refund = _refund_tool(seen)
     async with Donkey(_cfg()) as donkey:
-        async with donkey.as_user(id_token=_ALICE):
+        async with donkey.as_user(token=_ALICE):
             approval = _requested_sync(issue_refund, "T-1")
-        async with donkey.as_user(id_token=_ALICE):
+        async with donkey.as_user(token=_ALICE):
             donkey.approvals.resolve(approval.id, approved_by="m.keller")
     assert seen == [(_ALICE, None, None)]
 
@@ -247,7 +247,7 @@ async def test_a_service_request_resolved_inside_as_user_is_refused() -> None:
     issue_refund = _refund_tool(seen)
     approval = _requested_sync(issue_refund, "T-1")
     async with Donkey(_cfg()) as donkey:
-        async with donkey.as_user(id_token=_BOB):
+        async with donkey.as_user(token=_BOB):
             with pytest.raises(AuthError, match="as the service"):
                 donkey.approvals.resolve(approval.id, approved_by="m.keller")
     assert seen == []
@@ -264,10 +264,10 @@ async def test_an_async_tool_awaited_under_another_user_is_refused() -> None:
         return "refunded"
 
     async with Donkey(_cfg()) as donkey:
-        async with donkey.as_user(id_token=_ALICE):
+        async with donkey.as_user(token=_ALICE):
             approval = await _requested(issue_refund("T-1"))
         resumed = donkey.approvals.resolve(approval.id, approved_by="m.keller")
-        async with donkey.as_user(id_token=_BOB):
+        async with donkey.as_user(token=_BOB):
             with pytest.raises(AuthError):
                 await resumed
     assert seen == []
@@ -276,9 +276,9 @@ async def test_an_async_tool_awaited_under_another_user_is_refused() -> None:
 async def test_reject_needs_no_identity_check() -> None:
     issue_refund = _refund_tool([])
     async with Donkey(_cfg()) as donkey:
-        async with donkey.as_user(id_token=_ALICE):
+        async with donkey.as_user(token=_ALICE):
             approval = _requested_sync(issue_refund, "T-1")
-        async with donkey.as_user(id_token=_BOB):
+        async with donkey.as_user(token=_BOB):
             assert donkey.approvals.reject(approval.id, rejected_by="m.keller") == approval
 
 
@@ -323,7 +323,7 @@ async def test_a_native_resume_runs_as_the_requester_that_paused_it() -> None:
     seen: Seen = []
     tool = _native_tool(seen, _FakeFramework())
     async with Donkey(_cfg()) as donkey:
-        async with donkey.as_user(id_token=_ALICE):
+        async with donkey.as_user(token=_ALICE):
             with donkey.attribution(business_group="risk-eu"), pytest.raises(_Paused):
                 tool("T-1")
         # The framework resumes in the approver's context.
@@ -336,10 +336,10 @@ async def test_a_native_resume_under_another_user_is_refused() -> None:
     seen: Seen = []
     tool = _native_tool(seen, _FakeFramework())
     async with Donkey(_cfg()) as donkey:
-        async with donkey.as_user(id_token=_ALICE):
+        async with donkey.as_user(token=_ALICE):
             with pytest.raises(_Paused):
                 tool("T-1")
-        async with donkey.as_user(id_token=_BOB):
+        async with donkey.as_user(token=_BOB):
             with pytest.raises(AuthError, match="native-1"):
                 tool("T-1")
     assert seen == []
@@ -351,11 +351,11 @@ async def test_a_pause_this_process_did_not_record_runs_as_the_resumer() -> None
     seen: Seen = []
     tool = _native_tool(seen, _FakeFramework())
     async with Donkey(_cfg()) as donkey:
-        async with donkey.as_user(id_token=_ALICE):
+        async with donkey.as_user(token=_ALICE):
             with pytest.raises(_Paused):
                 tool("T-1")
         approvals_mod._reset_for_tests()
-        async with donkey.as_user(id_token=_BOB):
+        async with donkey.as_user(token=_BOB):
             tool("T-1")
     assert seen == [(_BOB, None, None)]
 
